@@ -36,7 +36,8 @@
  *
  * Create an instance of the Morse class.
  *
- * tx_pin - Arduino pin used as the output by this library.
+ * tx_pin - Arduino pin used as the output by this library. Will not toggle an
+ *          output pin if set to 0.
  * init_wpm - Sending speed in words per minute.
  *
  */
@@ -48,7 +49,10 @@ Morse::Morse(uint8_t tx_pin, float init_wpm) : output_pin(tx_pin)
 
 	setWPM(init_wpm);
 
-	pinMode(output_pin, OUTPUT);
+	if(output_pin)
+	{
+		pinMode(output_pin, OUTPUT);
+	}
 
 	cur_state = State::IDLE;
 	next_state = State::IDLE;
@@ -223,7 +227,10 @@ void Morse::update()
     case State::PREAMBLE:
       // Transmitter on
       tx = true;
-			digitalWrite(output_pin, HIGH);
+			if(output_pin)
+			{
+				digitalWrite(output_pin, HIGH);
+			}
 
       // When done waiting, go back to IDLE state to start the message
       if(cur_timer > cur_state_end)
@@ -235,12 +242,18 @@ void Morse::update()
     case State::DIT:
     case State::DAH:
       tx = true;
-			digitalWrite(output_pin, HIGH);
+			if(output_pin)
+			{
+				digitalWrite(output_pin, HIGH);
+			}
 
       if(cur_timer > cur_state_end)
       {
         tx = false;
-				digitalWrite(output_pin, LOW);
+				if(output_pin)
+				{
+					digitalWrite(output_pin, LOW);
+				}
 
         cur_state_end = cur_timer + dit_length;
         cur_state = State::DITDELAY;
@@ -252,7 +265,10 @@ void Morse::update()
 		case State::MSGDELAY:
     case State::EOMDELAY:
       tx = false;
-			digitalWrite(output_pin, LOW);
+			if(output_pin)
+			{
+				digitalWrite(output_pin, LOW);
+			}
 
       if(cur_timer > cur_state_end)
       {

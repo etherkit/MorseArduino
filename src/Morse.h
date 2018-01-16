@@ -28,7 +28,6 @@
 
 #include "Arduino.h"
 
-
 // Constants
 constexpr uint8_t DEFAULT_OUTPUT_PIN = LED_BUILTIN;
 constexpr float DEFAULT_WPM = 25;

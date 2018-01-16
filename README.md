@@ -44,7 +44,7 @@ If you need to check to see if the Morse library is currently sending the conten
 
 The sending speed can be changed on-the-fly by using the _setWPM()_ method. The parameter is typed using a _float_ so that fractional words per minute can be specified. Why would you want to do this? In case you need to send Morse code using a very long integration time such as with the QRSS operating mode. For example, a setting of 0.2 WPM sets a Morse code "dit" length of 6 seconds.
 
-If you don't want to have the library directly control a digital I/O pin, you may have your sketch poll the boolean _tx_ member variable and act on it accordingly within their periodic 1 ms function.
+If you don't want to have the library directly control a digital I/O pin, you may have your sketch poll the boolean _tx_ member variable and act on it accordingly within their periodic 1 ms function. Set the output pin parameter in the constructor to 0.
 
 Startup Conditions and Constraints
 ----------------------------------
@@ -61,7 +61,8 @@ Public Methods
  *
  * Create an instance of the Morse class.
  *
- * tx_pin - Arduino pin used as the output by this library.
+ * tx_pin - Arduino pin used as the output by this library. Will not toggle an
+ *          output pin if set to 0.
  * init_wpm - Sending speed in words per minute.
  *
  */
