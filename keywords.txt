@@ -9,3 +9,4 @@ tx	KEYWORD2
 tx_enable	KEYWORD2
 output_pin	KEYWORD2
 busy	KEYWORD2
+preamble_enable	KEYWORD2

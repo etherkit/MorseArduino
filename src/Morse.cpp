@@ -103,6 +103,12 @@ void Morse::update()
 					#ifdef DEBUG
 					Serial.println("Start of message");
 					#endif
+					if(preamble_enable)
+					{
+						cur_state = State::PREAMBLE;
+						cur_state_end = cur_state_end = cur_timer + (dit_length * MULT_WORDDELAY);
+						return;
+					}
         }
 
         // Get the current element in the current character
@@ -225,16 +231,17 @@ void Morse::update()
       break;
 
     case State::PREAMBLE:
-      // Transmitter on
-      tx = true;
+      // Transmitter off
+      tx = false;
 			if(output_pin)
 			{
-				digitalWrite(output_pin, HIGH);
+				digitalWrite(output_pin, LOW);
 			}
 
       // When done waiting, go back to IDLE state to start the message
       if(cur_timer > cur_state_end)
       {
+				preamble_enable = false;
         cur_state = State::IDLE;
       }
       break;

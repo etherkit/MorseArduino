@@ -53,6 +53,7 @@ public:
   bool tx_enable = true;
   uint8_t output_pin;
   bool busy = true;
+  bool preamble_enable = false;
 
 private:
   uint32_t getMsgDelay(uint8_t);
