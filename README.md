@@ -46,6 +46,8 @@ The sending speed can be changed on-the-fly by using the _setWPM()_ method. The 
 
 If you don't want to have the library directly control a digital I/O pin, you may have your sketch poll the boolean _tx_ member variable and act on it accordingly within their periodic 1 ms function. Set the output pin parameter in the constructor to 0.
 
+When you are using this library for the DFCW mode (continuous wave Morse Code with frequency modulation), you can specify a preamble period to happen with the carrier on before the message begins. Set member variable _preamble_enable_ to true to enable this for a transmission. Keep in mind that this member variable acts like a one-shot, so you will need to set it every time you intend to use it.
+
 Startup Conditions and Constraints
 ----------------------------------
 The default output pin is defined as LED_BUILTIN while the default sending speed is 25 words per minute.
@@ -113,6 +115,7 @@ Public Variables
     bool tx_enable;
     uint8_t output_pin;
     bool busy;
+    bool preamble_enable;
 
 Valid Characters
 ----------------
@@ -127,6 +130,10 @@ The standard uppercase and lowercase letters 'A' through 'Z' and digits '0' thro
 
 Changelog
 ---------
+
+* v1.0.1
+
+    * Add support for preamble.
 
 * v1.0.0
 
