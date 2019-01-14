@@ -109,6 +109,13 @@ void Morse::send(char * message)
 ```
 ### reset()
 ```
+/*
+ * Morse::reset()
+ *
+ * Halts and sending in progress, empties the message buffer, and resets the
+ * Morse state machine.
+ *
+ */
 ```
 
 Public Variables
