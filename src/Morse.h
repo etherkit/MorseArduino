@@ -30,6 +30,7 @@
 
 // Constants
 constexpr uint8_t DEFAULT_OUTPUT_PIN = LED_BUILTIN;
+constexpr uint8_t DEFAULT_LED_PIN = LED_BUILTIN;
 constexpr float DEFAULT_WPM = 25;
 constexpr uint8_t TX_BUFFER_SIZE = 100;
 constexpr uint8_t MULT_DAH = 3; // DAH is 3x a DIT
@@ -47,13 +48,17 @@ public:
   void update();
   void setWPM(float);
   void send(char *);
+  void reset();
 
   float wpm;
   bool tx = false;
   bool tx_enable = true;
   uint8_t output_pin;
+  uint8_t led_pin;
+  bool dfcw_mode = false;
   bool busy = true;
   bool preamble_enable = false;
+  uint8_t cur_char = 0;
 
 private:
   uint32_t getMsgDelay(uint8_t);

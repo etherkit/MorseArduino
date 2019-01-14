@@ -41,7 +41,7 @@
  * init_wpm - Sending speed in words per minute.
  *
  */
-Morse::Morse(uint8_t tx_pin, float init_wpm) : output_pin(tx_pin)
+Morse::Morse(uint8_t tx_pin, float init_wpm) : output_pin(tx_pin), led_pin(tx_pin)
 {
 	tx = false;
 	tx_enable = true;
@@ -82,238 +82,290 @@ void Morse::update()
 	#endif
 
 	switch(cur_state)
+  {
+  case State::IDLE:
+    // TX off
+    //pa_enable = false;
+    tx = false;
+
+    if(tx_enable)
     {
-    case State::IDLE:
-      // TX off
-      //pa_enable = false;
-      tx = false;
+      msg_delay_end = cur_timer + getMsgDelay(msg_delay);
 
-      if(tx_enable)
+      // If this is the first time thru the message loop, get the first character
+      if((cur_msg_p == msg_buffer) && (cur_character == '\0'))
       {
-        msg_delay_end = cur_timer + getMsgDelay(msg_delay);
+				#if defined(__arm__)
+				cur_character = morsechar[(*cur_msg_p) - MORSE_CHAR_START];
+				#else
+        cur_character = pgm_read_byte(&morsechar[(*cur_msg_p) - MORSE_CHAR_START]);
+				#endif
+				#ifdef DEBUG
+				Serial.println("Start of message");
+				#endif
+				if(preamble_enable)
+				{
+					cur_state = State::PREAMBLE;
+					cur_state_end = cur_state_end = cur_timer + (dit_length * MULT_WORDDELAY);
+					return;
+				}
+      }
 
-        // If this is the first time thru the message loop, get the first character
-        if((cur_msg_p == msg_buffer) && (cur_character == '\0'))
+      // Get the current element in the current character
+      if(cur_character != '\0')
+      {
+        if(cur_character == 0b10000000 || cur_character == 0b11111111)  // End of character marker or SPACE
         {
+          // Set next state based on whether EOC or SPACE
+          if(cur_character == 0b10000000)
+          {
+						#ifdef DEBUG
+						Serial.println("End of character");
+						#endif
+            cur_state_end = cur_timer + (dit_length * MULT_DAH);
+            cur_state = State::DAHDELAY;
+
+            // Grab next character, set state to inter-character delay
+            cur_msg_p++;
+						cur_char++;
+
+            // If we read a NULL from the announce buffer, set cur_character to NULL,
+            // otherwise set to correct morse character
+            if((*cur_msg_p) == '\0')
+            {
+              cur_character = '\0';
+            }
+            else
+            {
+							#if defined(__arm__)
+							cur_character = morsechar[(*cur_msg_p) - MORSE_CHAR_START];
+							#else
+		          cur_character = pgm_read_byte(&morsechar[(*cur_msg_p) - MORSE_CHAR_START]);
+							#endif
+            }
+          }
+          else
+          {
+            cur_state_end = cur_timer + (dit_length * MULT_WORDDELAY);
+            cur_state = State::WORDDELAY;
+						#ifdef DEBUG
+						Serial.println("Word delay");
+						#endif
+          }
+
+          // Grab next character, set state to inter-character delay
+          //cur_msg_p++;
+
+          // If we read a NULL from the announce buffer, set cur_character to NULL,
+          // otherwise set to correct morse character
+          // if((*cur_msg_p) == '\0')
+          // {
+          //   cur_character = '\0';
+          // }
+          // else
+          // {
+					// 	#if defined(__arm__)
+					// 	cur_character = morsechar[(*cur_msg_p) - MORSE_CHAR_START];
+					// 	#else
+					// 	cur_character = pgm_read_byte(&morsechar[(*cur_msg_p) - MORSE_CHAR_START]);
+					// 	#endif
+          // }
+        }
+        else
+        {
+          // Mask off MSb, set cur_element
+          if((cur_character & 0b10000000) == 0b10000000)
+          {
+            cur_state_end = cur_timer + (dit_length * MULT_DAH);
+            cur_state = State::DAH;
+						#ifdef DEBUG
+						Serial.print("DAH ");
+						Serial.println(cur_character, BIN);
+						#endif
+          }
+          else
+          {
+            cur_state_end = cur_timer + dit_length;
+            cur_state = State::DIT;
+						#ifdef DEBUG
+						Serial.print("DIT ");
+						Serial.println(cur_character, BIN);
+						#endif
+          }
+
+          // Shift left to get next element
+          cur_character = cur_character << 1;
+        }
+      }
+      else // End of message
+      {
+				#ifdef DEBUG
+				Serial.println("End of message");
+				#endif
+        // Reload the message buffer and set buffer pointer back to beginning
+				//strcpy(msg_buffer, tx_buffer);
+        //cur_msg_p = msg_buffer;
+        cur_character = '\0';
+
+        if(msg_delay == 0)
+        {
+          // If a constantly repeating message, put a word delay at the end of message
+          cur_state_end = cur_timer + (dit_length * MULT_WORDDELAY);
+          cur_state = State::EOMDELAY;
+        }
+        else
+        {
+          // Otherwise, set the message delay time
+          if(msg_delay_end < (cur_timer + (dit_length * MULT_WORDDELAY)))
+          {
+            cur_state_end = cur_timer + (dit_length * MULT_WORDDELAY);
+          }
+          else
+          {
+            cur_state_end = msg_delay_end;
+          }
+
+          cur_state = State::MSGDELAY;
+        }
+      }
+    }
+    break;
+
+  case State::PREAMBLE:
+    // Transmitter off
+    tx = false;
+		if(dfcw_mode)
+		{
+			// if(output_pin)
+			// {
+			// 	digitalWrite(output_pin, LOW);
+			// }
+			digitalWrite(output_pin, HIGH);
+			digitalWrite(led_pin, HIGH);
+		}
+		else
+		{
+			if(output_pin)
+			{
+				digitalWrite(output_pin, LOW);
+			}
+			digitalWrite(led_pin, LOW);
+		}
+
+    // When done waiting, go back to IDLE state to start the message
+    if(cur_timer > cur_state_end)
+    {
+			preamble_enable = false;
+      cur_state = State::IDLE;
+    }
+    break;
+
+  case State::DIT:
+  case State::DAH:
+    tx = true;
+		if(output_pin)
+		{
+			digitalWrite(output_pin, HIGH);
+		}
+		digitalWrite(led_pin, HIGH);
+
+    if(cur_timer > cur_state_end)
+    {
+      tx = false;
+			if(dfcw_mode)
+			{
+				// if(output_pin)
+				// {
+				// 	digitalWrite(output_pin, LOW);
+				// }
+				digitalWrite(led_pin, HIGH);
+			}
+			else
+			{
+				if(output_pin)
+				{
+					digitalWrite(output_pin, LOW);
+				}
+				digitalWrite(led_pin, LOW);
+			}
+
+      cur_state_end = cur_timer + dit_length;
+      cur_state = State::DITDELAY;
+    }
+    break;
+  case State::DITDELAY:
+  case State::DAHDELAY:
+  case State::WORDDELAY:
+	case State::MSGDELAY:
+  case State::EOMDELAY:
+    tx = false;
+		if(dfcw_mode)
+		{
+			// if(output_pin)
+			// {
+			// 	digitalWrite(output_pin, LOW);
+			// }
+			digitalWrite(led_pin, HIGH);
+		}
+		else
+		{
+			if(output_pin)
+			{
+				digitalWrite(output_pin, LOW);
+			}
+			digitalWrite(led_pin, LOW);
+		}
+
+    if(cur_timer > cur_state_end)
+    {
+      if(cur_state == State::WORDDELAY)
+      {
+        // Grab next character
+        cur_msg_p++;
+				cur_char++;
+
+        // If we read a NULL from the announce buffer, set cur_character to NULL,
+        // otherwise set to correct morse character
+        if((*cur_msg_p) == '\0')
+        {
+          cur_character = '\0';
+        }
+        else
+        {
+					// TODO
 					#if defined(__arm__)
 					cur_character = morsechar[(*cur_msg_p) - MORSE_CHAR_START];
 					#else
           cur_character = pgm_read_byte(&morsechar[(*cur_msg_p) - MORSE_CHAR_START]);
 					#endif
-					#ifdef DEBUG
-					Serial.println("Start of message");
-					#endif
-					if(preamble_enable)
+        }
+      }
+			else if(cur_state == State::EOMDELAY)
+			{
+				// Clear the message buffer when message sending is complete
+				memset(msg_buffer, 0, TX_BUFFER_SIZE + 1);
+				busy = false;
+				if(dfcw_mode)
+				{
+					digitalWrite(led_pin, LOW);
+				}
+				else
+				{
+					if(output_pin)
 					{
-						cur_state = State::PREAMBLE;
-						cur_state_end = cur_state_end = cur_timer + (dit_length * MULT_WORDDELAY);
-						return;
+						digitalWrite(output_pin, LOW);
 					}
-        }
-
-        // Get the current element in the current character
-        if(cur_character != '\0')
-        {
-          if(cur_character == 0b10000000 || cur_character == 0b11111111)  // End of character marker or SPACE
-          {
-            // Set next state based on whether EOC or SPACE
-            if(cur_character == 0b10000000)
-            {
-							#ifdef DEBUG
-							Serial.println("End of character");
-							#endif
-              cur_state_end = cur_timer + (dit_length * MULT_DAH);
-              cur_state = State::DAHDELAY;
-
-              // Grab next character, set state to inter-character delay
-              cur_msg_p++;
-
-              // If we read a NULL from the announce buffer, set cur_character to NULL,
-              // otherwise set to correct morse character
-              if((*cur_msg_p) == '\0')
-              {
-                cur_character = '\0';
-              }
-              else
-              {
-								#if defined(__arm__)
-								cur_character = morsechar[(*cur_msg_p) - MORSE_CHAR_START];
-								#else
-			          cur_character = pgm_read_byte(&morsechar[(*cur_msg_p) - MORSE_CHAR_START]);
-								#endif
-              }
-            }
-            else
-            {
-              cur_state_end = cur_timer + (dit_length * MULT_WORDDELAY);
-              cur_state = State::WORDDELAY;
-							#ifdef DEBUG
-							Serial.println("Word delay");
-							#endif
-            }
-
-            // Grab next character, set state to inter-character delay
-            //cur_msg_p++;
-
-            // If we read a NULL from the announce buffer, set cur_character to NULL,
-            // otherwise set to correct morse character
-            // if((*cur_msg_p) == '\0')
-            // {
-            //   cur_character = '\0';
-            // }
-            // else
-            // {
-						// 	#if defined(__arm__)
-						// 	cur_character = morsechar[(*cur_msg_p) - MORSE_CHAR_START];
-						// 	#else
-						// 	cur_character = pgm_read_byte(&morsechar[(*cur_msg_p) - MORSE_CHAR_START]);
-						// 	#endif
-            // }
-          }
-          else
-          {
-            // Mask off MSb, set cur_element
-            if((cur_character & 0b10000000) == 0b10000000)
-            {
-              cur_state_end = cur_timer + (dit_length * MULT_DAH);
-              cur_state = State::DAH;
-							#ifdef DEBUG
-							Serial.print("DAH ");
-							Serial.println(cur_character, BIN);
-							#endif
-            }
-            else
-            {
-              cur_state_end = cur_timer + dit_length;
-              cur_state = State::DIT;
-							#ifdef DEBUG
-							Serial.print("DIT ");
-							Serial.println(cur_character, BIN);
-							#endif
-            }
-
-            // Shift left to get next element
-            cur_character = cur_character << 1;
-          }
-        }
-        else // End of message
-        {
-					#ifdef DEBUG
-					Serial.println("End of message");
-					#endif
-          // Reload the message buffer and set buffer pointer back to beginning
-					//strcpy(msg_buffer, tx_buffer);
-          //cur_msg_p = msg_buffer;
-          cur_character = '\0';
-
-          if(msg_delay == 0)
-          {
-            // If a constantly repeating message, put a word delay at the end of message
-            cur_state_end = cur_timer + (dit_length * MULT_WORDDELAY);
-            cur_state = State::EOMDELAY;
-          }
-          else
-          {
-            // Otherwise, set the message delay time
-            if(msg_delay_end < (cur_timer + (dit_length * MULT_WORDDELAY)))
-            {
-              cur_state_end = cur_timer + (dit_length * MULT_WORDDELAY);
-            }
-            else
-            {
-              cur_state_end = msg_delay_end;
-            }
-
-            cur_state = State::MSGDELAY;
-          }
-        }
-      }
-      break;
-
-    case State::PREAMBLE:
-      // Transmitter off
-      tx = false;
-			if(output_pin)
-			{
-				digitalWrite(output_pin, LOW);
-			}
-
-      // When done waiting, go back to IDLE state to start the message
-      if(cur_timer > cur_state_end)
-      {
-				preamble_enable = false;
-        cur_state = State::IDLE;
-      }
-      break;
-
-    case State::DIT:
-    case State::DAH:
-      tx = true;
-			if(output_pin)
-			{
-				digitalWrite(output_pin, HIGH);
-			}
-
-      if(cur_timer > cur_state_end)
-      {
-        tx = false;
-				if(output_pin)
-				{
-					digitalWrite(output_pin, LOW);
+					digitalWrite(led_pin, LOW);
 				}
-
-        cur_state_end = cur_timer + dit_length;
-        cur_state = State::DITDELAY;
-      }
-      break;
-    case State::DITDELAY:
-    case State::DAHDELAY:
-    case State::WORDDELAY:
-		case State::MSGDELAY:
-    case State::EOMDELAY:
-      tx = false;
-			if(output_pin)
-			{
-				digitalWrite(output_pin, LOW);
 			}
 
-      if(cur_timer > cur_state_end)
-      {
-        if(cur_state == State::WORDDELAY)
-        {
-          // Grab next character
-          cur_msg_p++;
-
-          // If we read a NULL from the announce buffer, set cur_character to NULL,
-          // otherwise set to correct morse character
-          if((*cur_msg_p) == '\0')
-          {
-            cur_character = '\0';
-          }
-          else
-          {
-						// TODO
-						#if defined(__arm__)
-						cur_character = morsechar[(*cur_msg_p) - MORSE_CHAR_START];
-						#else
-	          cur_character = pgm_read_byte(&morsechar[(*cur_msg_p) - MORSE_CHAR_START]);
-						#endif
-          }
-        }
-				else if(cur_state == State::EOMDELAY)
-				{
-					// Clear the message buffer when message sending is complete
-					memset(msg_buffer, 0, TX_BUFFER_SIZE + 1);
-					busy = false;
-				}
-
-        cur_state = State::IDLE;
-      }
-      break;
-
-    default:
-      break;
+      cur_state = State::IDLE;
     }
+    break;
+
+  default:
+    break;
+  }
 }
 
 /*
@@ -345,8 +397,26 @@ void Morse::send(char * message)
 {
 	strcpy((char *)msg_buffer, message);
 	cur_msg_p = msg_buffer;
+	cur_char = 0;
 	cur_state = State::IDLE;
 	busy = true;
+}
+
+/*
+ * Morse::reset()
+ *
+ * Halts and sending in progress, empties the message buffer, and resets the
+ * Morse state machine.
+ *
+ */
+void Morse::reset()
+{
+	strcpy((char *)msg_buffer, "");
+	cur_msg_p = msg_buffer;
+	cur_char = 0;
+	cur_state = State::IDLE;
+	busy = false;
+	digitalWrite(led_pin, LOW);
 }
 
 /*

@@ -107,6 +107,9 @@ void Morse::setWPM(float new_wpm)
  */
 void Morse::send(char * message)
 ```
+### reset()
+```
+```
 
 Public Variables
 ----------------
@@ -114,8 +117,11 @@ Public Variables
     bool tx;
     bool tx_enable;
     uint8_t output_pin;
+    uint8_t led_pin;
+    bool dfcw_mode = false;
     bool busy;
     bool preamble_enable;
+    uint8_t cur_char = 0;
 
 Valid Characters
 ----------------
@@ -130,6 +136,10 @@ The standard uppercase and lowercase letters 'A' through 'Z' and digits '0' thro
 
 Changelog
 ---------
+
+* v1.1.0
+
+    * Add DFCW mode, LED pin, current character position, and reset.
 
 * v1.0.1
 

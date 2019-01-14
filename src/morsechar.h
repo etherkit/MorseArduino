@@ -47,7 +47,7 @@
 constexpr uint8_t MORSE_CHAR_START = 32;
 
 #if defined(__arm__)
-constexpr uint8_t morsechar[] =
+const uint8_t morsechar[] =
 #else
 const uint8_t morsechar[] PROGMEM =
 #endif
