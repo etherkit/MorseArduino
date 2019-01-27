@@ -22,7 +22,7 @@ Example
 -------
 First, install the Morse library into your instance of the Arduino IDE as described above.
 
-There two simple examples named **morse_example_avr.ino** and **morse_example_samd.ino** that are placed in your examples menu under the Etherkit Morse folder. Open one corresponding to the Arduino variant on which you will be running the example.
+There two simple examples named **morse_example_avr.ino** and **morse_example_samd.ino** that are placed in your examples menu under the Etherkit Morse folder. Open one corresponding to the Arduino variant on which you will be running the example. If you are using an AVR-based Arduino (such as an Uno), you'll want to also install the SimpleTimer library found (here)[https://playground.arduino.cc/Code/SimpleTimer].
 
 In order to use the Morse library in your sketch, you must first instantiate an object of class Morse:
 
@@ -112,7 +112,7 @@ void Morse::send(char * message)
 /*
  * Morse::reset()
  *
- * Halts and sending in progress, empties the message buffer, and resets the
+ * Halts any sending in progress, empties the message buffer, and resets the
  * Morse state machine.
  *
  */
@@ -143,6 +143,9 @@ The standard uppercase and lowercase letters 'A' through 'Z' and digits '0' thro
 
 Changelog
 ---------
+* v1.1.1
+
+    * Minor bug and documentation fixes.
 
 * v1.1.0
 

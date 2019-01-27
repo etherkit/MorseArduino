@@ -4,6 +4,9 @@
  *
  * Copyright (C) 2018 Jason Milldrum <milldrum@gmail.com>
  *
+ * Uses the SimpleTimer library which you can find here:
+ * https://playground.arduino.cc/Code/SimpleTimer
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or

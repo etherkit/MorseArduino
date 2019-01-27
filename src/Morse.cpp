@@ -263,11 +263,23 @@ void Morse::update()
   case State::DIT:
   case State::DAH:
     tx = true;
-		if(output_pin)
+		if(dfcw_mode)
 		{
+			// if(output_pin)
+			// {
+			// 	digitalWrite(output_pin, LOW);
+			// }
 			digitalWrite(output_pin, HIGH);
+			digitalWrite(led_pin, HIGH);
 		}
-		digitalWrite(led_pin, HIGH);
+		else
+		{
+			if(output_pin)
+			{
+				digitalWrite(output_pin, HIGH);
+			}
+			digitalWrite(led_pin, HIGH);
+		}
 
     if(cur_timer > cur_state_end)
     {
@@ -345,6 +357,7 @@ void Morse::update()
 				// Clear the message buffer when message sending is complete
 				memset(msg_buffer, 0, TX_BUFFER_SIZE + 1);
 				busy = false;
+				cur_char = 0;
 				if(dfcw_mode)
 				{
 					digitalWrite(led_pin, LOW);
@@ -405,13 +418,14 @@ void Morse::send(char * message)
 /*
  * Morse::reset()
  *
- * Halts and sending in progress, empties the message buffer, and resets the
+ * Halts any sending in progress, empties the message buffer, and resets the
  * Morse state machine.
  *
  */
 void Morse::reset()
 {
-	strcpy((char *)msg_buffer, "");
+	// strcpy((char *)msg_buffer, "");
+	memset(msg_buffer, 0, TX_BUFFER_SIZE + 1);
 	cur_msg_p = msg_buffer;
 	cur_char = 0;
 	cur_state = State::IDLE;
