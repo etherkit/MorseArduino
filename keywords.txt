@@ -4,13 +4,13 @@ init	KEYWORD2
 update	KEYWORD2
 setWPM	KEYWORD2
 send	KEYWORD2
-reset KEYWORD2
+reset	KEYWORD2
 wpm	KEYWORD2
 tx	KEYWORD2
 tx_enable	KEYWORD2
 output_pin	KEYWORD2
-led_pin KEYWORD2
-dfcw_mode KEYWORD2
+led_pin	KEYWORD2
+dfcw_mode	KEYWORD2
 busy	KEYWORD2
 preamble_enable	KEYWORD2
-cur_char  KEYWORD2
+cur_char	KEYWORD2
