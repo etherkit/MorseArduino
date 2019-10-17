@@ -47,7 +47,7 @@ public:
   Morse(uint8_t tx_pin = DEFAULT_OUTPUT_PIN, float init_wpm = DEFAULT_WPM);
   void update();
   void setWPM(float);
-  void send(char *);
+  void send(const char *);
   void reset();
 
   float wpm;
@@ -66,12 +66,12 @@ private:
   uint32_t dit_length;
   uint8_t msg_delay = 0;
   uint32_t msg_delay_end;
-  uint8_t * cur_msg_p = nullptr;
+  char * cur_msg_p = nullptr;
   uint8_t cur_character = 0;
 
   State cur_state, next_state;
   volatile uint32_t cur_timer, cur_state_end;
-  uint8_t msg_buffer[TX_BUFFER_SIZE + 1];
+  char msg_buffer[TX_BUFFER_SIZE + 1];
 };
 
 #endif // ETHERKIT_MORSE_H_
