@@ -98,7 +98,7 @@ void Morse::setWPM(float new_wpm)
 ### send()
 ```
 /*
- * void Morse::send(char * message)
+ * void Morse::send(const char * message)
  *
  * Send the specified message in Morse code on the output pin.
  *
@@ -143,6 +143,10 @@ The standard uppercase and lowercase letters 'A' through 'Z' and digits '0' thro
 
 Changelog
 ---------
+* v1.1.2
+
+    * Fix bug in sending first character, correct keywords.txt
+
 * v1.1.1
 
     * Minor bug and documentation fixes.
