@@ -32,7 +32,10 @@
 constexpr uint8_t DEFAULT_OUTPUT_PIN = LED_BUILTIN;
 constexpr uint8_t DEFAULT_LED_PIN = LED_BUILTIN;
 constexpr float DEFAULT_WPM = 25;
-constexpr uint8_t TX_BUFFER_SIZE = 100;
+#ifndef TXBUFFERSIZE
+#define TXBUFFERSIZE 100
+#endif
+constexpr uint8_t TX_BUFFER_SIZE = TXBUFFERSIZE;
 constexpr uint8_t MULT_DAH = 3; // DAH is 3x a DIT
 constexpr uint8_t MULT_WORDDELAY = 7; // Space between words is 7 dits
 constexpr uint8_t MAX_MSG_DELAY = 30;	// Maximum message delay time in minutes
