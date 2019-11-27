@@ -6,7 +6,7 @@ This library sends Morse Code via toggling a specified output pin and/or togglin
 
 Thanks For Your Support!
 ------------------------
-If you would like to support my library development efforts, please consider a [PayPal donation](https://paypal.me/NT7S) or purchasing something from the [Etherkit Store](https://www.etherkit.com). Thank you!
+If you would like to support my library development efforts, please consider on-going support via my [SubscribeStar](https://www.subscribestar.com/nt7s) page, sending a one-time [PayPal donation](https://paypal.me/NT7S) or purchasing something from the [Etherkit Store](https://www.etherkit.com). Thank you!
 
 Library Installation
 ---------------------
