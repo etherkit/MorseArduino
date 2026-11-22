@@ -166,6 +166,12 @@ The _extras/test_ folder holds host-side regression tests that build the library
     cd extras/test
     make
 
+To run the same tests on an emulated Cortex-M0 (the instruction set used by SAMD21 boards such as the Arduino Zero), install _qemu-system-arm_ and the Arduino SAMD core, then run:
+
+    make qemu
+
+This builds the tests with the SAMD core's arm-none-eabi compiler and runs them on QEMU's micro:bit machine, reporting results over semihosting. It checks the library logic and the Cortex-M interrupt guard code; it does not model SAMD timers or pins.
+
 Changelog
 ---------
 * v1.2.0
