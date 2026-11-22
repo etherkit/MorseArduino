@@ -20,30 +20,23 @@
 #ifndef ETHERKIT_MORSE_H_
 #define ETHERKIT_MORSE_H_
 
-#if defined(__arm__)
-#include <cstdint>
-#else
-#include <stdint.h>
-#endif
-
 #include "Arduino.h"
-
-// Constants
-constexpr uint8_t DEFAULT_OUTPUT_PIN = LED_BUILTIN;
-constexpr uint8_t DEFAULT_LED_PIN = LED_BUILTIN;
-constexpr float DEFAULT_WPM = 25;
-constexpr uint8_t TX_BUFFER_SIZE = 100;
-constexpr uint8_t MULT_DAH = 3; // DAH is 3x a DIT
-constexpr uint8_t MULT_WORDDELAY = 7; // Space between words is 7 dits
-constexpr uint8_t MAX_MSG_DELAY = 30;	// Maximum message delay time in minutes
-
-// Enumerations
-enum class State {IDLE, DIT, DAH, DITDELAY, DAHDELAY, WORDDELAY, MSGDELAY,
-  EOMDELAY, PREAMBLE};
+#include <stdint.h>
 
 class Morse
 {
 public:
+  // Constants
+#ifdef LED_BUILTIN
+  static constexpr uint8_t DEFAULT_OUTPUT_PIN = LED_BUILTIN;
+#else
+  static constexpr uint8_t DEFAULT_OUTPUT_PIN = 0;
+#endif
+  static constexpr float DEFAULT_WPM = 25;
+  static constexpr float MIN_WPM = 0.01;   // 120 second dit (QRSS120)
+  static constexpr float MAX_WPM = 1200;   // 1 ms dit (one update() tick)
+  static constexpr uint8_t TX_BUFFER_SIZE = 100;
+
   Morse(uint8_t tx_pin = DEFAULT_OUTPUT_PIN, float init_wpm = DEFAULT_WPM);
   void update();
   void setWPM(float);
@@ -51,27 +44,34 @@ public:
   void reset();
 
   float wpm;
-  bool tx = false;
+  volatile bool tx = false;
   bool tx_enable = true;
   uint8_t output_pin;
   uint8_t led_pin;
   bool dfcw_mode = false;
-  bool busy = true;
+  volatile bool busy = false;
   bool preamble_enable = false;
-  uint8_t cur_char = 0;
+  volatile uint8_t cur_char = 0;
 
 private:
-  uint32_t getMsgDelay(uint8_t);
-  uint32_t dit_delay;
-  uint32_t dit_length;
-  uint8_t msg_delay = 0;
-  uint32_t msg_delay_end;
-  char * cur_msg_p = nullptr;
-  uint8_t cur_character = 0;
+  enum class State {IDLE, PREAMBLE, DIT, DAH, ELEMENTDELAY, CHARDELAY,
+    WORDDELAY, EOMDELAY};
 
-  State cur_state, next_state;
-  volatile uint32_t cur_timer, cur_state_end;
-  char msg_buffer[TX_BUFFER_SIZE + 1];
+  void nextElement();
+  void loadCharacter();
+  void startState(State, uint8_t);
+  void finishMessage();
+  void setOutputs(bool);
+  void configurePins();
+
+  uint32_t dit_length = 0;
+  uint32_t cur_timer = 0;
+  uint32_t cur_state_end = 0;
+  State cur_state = State::IDLE;
+  bool msg_started = false;
+  const char * cur_msg_p = msg_buffer;
+  uint8_t cur_character = 0;
+  char msg_buffer[TX_BUFFER_SIZE + 1] = {};
 };
 
 #endif // ETHERKIT_MORSE_H_
