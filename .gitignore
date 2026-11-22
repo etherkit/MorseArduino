@@ -1,0 +1,3 @@
+extras/test/test_morse
+extras/test/test_morse_m0.elf
+extras/test/*.o

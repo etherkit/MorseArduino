@@ -1,6 +1,5 @@
 Morse	KEYWORD1
 
-init	KEYWORD2
 update	KEYWORD2
 setWPM	KEYWORD2
 send	KEYWORD2

@@ -33,24 +33,37 @@
  *  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef MORSECHAR_H_
-#define MORSECHAR_H_
+#ifndef ETHERKIT_MORSECHAR_H_
+#define ETHERKIT_MORSECHAR_H_
 
-// The morsechar array maps to the standard ASCII table starting at ASCII 32 (SPACE).
+// The morsechar array maps to the standard ASCII table starting at ASCII 32 (SPACE)
+// and ending at ASCII 90 ('Z'). Lowercase input is folded to uppercase before
+// lookup, and any character outside this range is skipped.
 //
 // A dit is represented by a "0" bit, while a dah is represented by a "1" bit.
 //
 // Characters are encoded with the most significant "bit" first so that the byte can be left-shifted
 // to read out each element. Each character must be terminated in a "1" so that the reading algorithm
-// knows to end when the byte == 0b10000000.
+// knows to end when the byte == 0b10000000. A table entry of exactly 0b10000000 (no elements) marks an
+// unsupported character, which is skipped.
 
-constexpr uint8_t MORSE_CHAR_START = 32;
+#include <stdint.h>
 
-#if defined(__arm__)
-const uint8_t morsechar[] =
+#if defined(__AVR__)
+#include <avr/pgmspace.h>
+#define MORSE_PROGMEM PROGMEM
+#define MORSE_READ_BYTE(p) pgm_read_byte(p)
 #else
-const uint8_t morsechar[] PROGMEM =
+#define MORSE_PROGMEM
+#define MORSE_READ_BYTE(p) (*(p))
 #endif
+
+constexpr uint8_t MORSE_CHAR_START = ' ';
+constexpr uint8_t MORSE_CHAR_END = 'Z';
+constexpr uint8_t MORSE_EOC = 0b10000000;    // End of character / unsupported
+constexpr uint8_t MORSE_SPACE = 0b11111111;  // Word space
+
+static const uint8_t morsechar[] MORSE_PROGMEM =
 {
   0b11111111,		// Special code for SPACE
   0b10000000,		// Not implemented
@@ -110,39 +123,7 @@ const uint8_t morsechar[] PROGMEM =
   0b01110000,		// "W"
   0b10011000,		// "X"
   0b10111000,		// "Y"
-  0b11001000,		// "Z"
-  0b10000000,		// Not implemented
-  0b10000000,		// Not implemented
-  0b10000000,		// Not implemented
-  0b10000000,		// Not implemented
-  0b10000000,		// Not implemented
-  0b10000000,		// Not implemented
-  0b01100000,		// "a"
-  0b10001000,		// "b"
-  0b10101000,		// "c"
-  0b10010000,		// "d"
-  0b01000000,		// "e"
-  0b00101000,		// "f"
-  0b11010000,		// "g"
-  0b00001000,		// "h"
-  0b00100000,		// "i"
-  0b01111000,		// "j"
-  0b10110000,		// "k"
-  0b01001000,		// "l"
-  0b11100000,		// "m"
-  0b10100000,		// "n"
-  0b11110000,		// "o"
-  0b01101000,		// "p"
-  0b11011000,		// "q"
-  0b01010000,		// "r"
-  0b00010000,		// "s"
-  0b11000000,		// "t"
-  0b00110000,		// "u"
-  0b00011000,		// "v"
-  0b01110000,		// "w"
-  0b10011000,		// "x"
-  0b10111000,		// "y"
-  0b11001000    // "z"
+  0b11001000		// "Z"
 };
 
-#endif /* MORSECHAR_H_ */
+#endif /* ETHERKIT_MORSECHAR_H_ */

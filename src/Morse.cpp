@@ -17,22 +17,89 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#if defined(__arm__)
-#include <cstring>
-#include <cstdint>
-#else
-#include <string.h>
-#include <stdint.h>
-#endif
-
 #include "Morse.h"
 #include "Arduino.h"
 #include "morsechar.h"
 
-//#define DEBUG
+#include <stdint.h>
+#include <string.h>
+
+static_assert(sizeof(morsechar) == MORSE_CHAR_END - MORSE_CHAR_START + 1,
+  "morsechar table does not match MORSE_CHAR_START..MORSE_CHAR_END");
+
+namespace
+{
+
+// Timing, in dit units. Standard spacing is 1 dit between elements, 3 dits
+// between characters and 7 dits between words. Every element is followed by
+// an element delay, so the character and word delays only add the remainder.
+constexpr uint8_t UNITS_DIT = 1;
+constexpr uint8_t UNITS_DAH = 3;
+constexpr uint8_t UNITS_ELEMENT_DELAY = 1;
+constexpr uint8_t UNITS_CHAR_DELAY = 3 - UNITS_ELEMENT_DELAY;
+constexpr uint8_t UNITS_WORD_DELAY = 7 - UNITS_ELEMENT_DELAY - UNITS_CHAR_DELAY;
+constexpr uint8_t UNITS_PREAMBLE = 7;
 
 /*
- * Morse::Morse(uint8_t tx_pin, float init_wpm) : output_pin(tx_pin)
+ * Disables interrupts for the lifetime of the object, then restores the
+ * previous interrupt state (so it is safe to use from inside an ISR).
+ *
+ * Used by the public methods that change state shared with update(), which
+ * may be running from a timer interrupt.
+ */
+class InterruptGuard
+{
+public:
+#if defined(__AVR__)
+  InterruptGuard() : sreg(SREG) { cli(); }
+  ~InterruptGuard() { __asm__ __volatile__("" ::: "memory"); SREG = sreg; }
+private:
+  uint8_t sreg;
+#elif defined(__arm__) && defined(__ARM_ARCH_PROFILE) && (__ARM_ARCH_PROFILE == 'M')
+  InterruptGuard()
+  {
+    __asm__ __volatile__("mrs %0, primask" : "=r"(primask));
+    __asm__ __volatile__("cpsid i" ::: "memory");
+  }
+  ~InterruptGuard() { __asm__ __volatile__("msr primask, %0" :: "r"(primask) : "memory"); }
+private:
+  uint32_t primask;
+#else
+  InterruptGuard() { noInterrupts(); }
+  ~InterruptGuard() { interrupts(); }
+#endif
+};
+
+/*
+ * Look up the Morse encoding of an ASCII character. Returns 0 for the end of
+ * the string and MORSE_EOC for any character that cannot be sent.
+ */
+uint8_t lookupCharacter(char c)
+{
+  uint8_t ch = static_cast<uint8_t>(c);
+
+  if (ch == '\0')
+  {
+    return 0;
+  }
+
+  if (ch >= 'a' && ch <= 'z')
+  {
+    ch -= 'a' - 'A';
+  }
+
+  if (ch < MORSE_CHAR_START || ch > MORSE_CHAR_END)
+  {
+    return MORSE_EOC;
+  }
+
+  return MORSE_READ_BYTE(&morsechar[ch - MORSE_CHAR_START]);
+}
+
+} // namespace
+
+/*
+ * Morse::Morse(uint8_t tx_pin, float init_wpm)
  *
  * Create an instance of the Morse class.
  *
@@ -43,20 +110,8 @@
  */
 Morse::Morse(uint8_t tx_pin, float init_wpm) : output_pin(tx_pin), led_pin(tx_pin)
 {
-	tx = false;
-	tx_enable = true;
-	busy = false;
-	cur_character = 0;
-
 	setWPM(init_wpm);
-
-	if (output_pin)
-	{
-		pinMode(output_pin, OUTPUT);
-	}
-
-	cur_state = State::IDLE;
-	next_state = State::IDLE;
+	configurePins();
 }
 
 /*
@@ -70,314 +125,41 @@ Morse::Morse(uint8_t tx_pin, float init_wpm) : output_pin(tx_pin), led_pin(tx_pi
  */
 void Morse::update()
 {
-	noInterrupts();
 	cur_timer++;
-	interrupts();
 
-#ifdef DEBUG
-	if (cur_character != 0)
+	if (cur_state == State::IDLE)
 	{
-		//Serial.println(cur_timer);
-		//Serial.println(cur_character, HEX);
+		if (busy && tx_enable)
+		{
+			nextElement();
+		}
+		return;
 	}
-#endif
+
+	// Wrap-safe check for whether the current state has run its full length
+	if (static_cast<int32_t>(cur_timer - cur_state_end) < 0)
+	{
+		return;
+	}
 
 	switch (cur_state)
 	{
-	case State::IDLE:
-		// TX off
-		//pa_enable = false;
-		tx = false;
-
-		if (tx_enable)
-		{
-			msg_delay_end = cur_timer + getMsgDelay(msg_delay);
-
-			// If this is the first time thru the message loop, get the first character
-			if ((cur_msg_p == msg_buffer) && (cur_character == '\0'))
-			{
-#if defined(__arm__)
-				cur_character = morsechar[(*cur_msg_p) - MORSE_CHAR_START];
-#else
-				cur_character = pgm_read_byte(&morsechar[(*cur_msg_p) - MORSE_CHAR_START]);
-#endif
-#ifdef DEBUG
-				Serial.println("Start of message");
-#endif
-				if (preamble_enable)
-				{
-					cur_state = State::PREAMBLE;
-					cur_state_end = cur_state_end = cur_timer + (dit_length * MULT_WORDDELAY);
-					return;
-				}
-			}
-
-			// Get the current element in the current character
-			if (cur_character != '\0')
-			{
-				if (cur_character == 0b10000000 || cur_character == 0b11111111) // End of character marker or SPACE
-				{
-					// Set next state based on whether EOC or SPACE
-					if (cur_character == 0b10000000)
-					{
-#ifdef DEBUG
-						Serial.println("End of character");
-#endif
-						cur_state_end = cur_timer + (dit_length * MULT_DAH);
-						cur_state = State::DAHDELAY;
-
-						// Grab next character, set state to inter-character delay
-						cur_msg_p++;
-						cur_char++;
-
-						// If we read a NULL from the announce buffer, set cur_character to NULL,
-						// otherwise set to correct morse character
-						if ((*cur_msg_p) == '\0')
-						{
-							cur_character = '\0';
-						}
-						else
-						{
-#if defined(__arm__)
-							cur_character = morsechar[(*cur_msg_p) - MORSE_CHAR_START];
-#else
-							cur_character = pgm_read_byte(&morsechar[(*cur_msg_p) - MORSE_CHAR_START]);
-#endif
-						}
-					}
-					else
-					{
-						cur_state_end = cur_timer + (dit_length * MULT_WORDDELAY);
-						cur_state = State::WORDDELAY;
-#ifdef DEBUG
-						Serial.println("Word delay");
-#endif
-					}
-
-					// Grab next character, set state to inter-character delay
-					//cur_msg_p++;
-
-					// If we read a NULL from the announce buffer, set cur_character to NULL,
-					// otherwise set to correct morse character
-					// if((*cur_msg_p) == '\0')
-					// {
-					//   cur_character = '\0';
-					// }
-					// else
-					// {
-					// 	#if defined(__arm__)
-					// 	cur_character = morsechar[(*cur_msg_p) - MORSE_CHAR_START];
-					// 	#else
-					// 	cur_character = pgm_read_byte(&morsechar[(*cur_msg_p) - MORSE_CHAR_START]);
-					// 	#endif
-					// }
-				}
-				else
-				{
-					// Mask off MSb, set cur_element
-					if ((cur_character & 0b10000000) == 0b10000000)
-					{
-						cur_state_end = cur_timer + (dit_length * MULT_DAH);
-						cur_state = State::DAH;
-#ifdef DEBUG
-						Serial.print("DAH ");
-						Serial.println(cur_character, BIN);
-#endif
-					}
-					else
-					{
-						cur_state_end = cur_timer + dit_length;
-						cur_state = State::DIT;
-#ifdef DEBUG
-						Serial.print("DIT ");
-						Serial.println(cur_character, BIN);
-#endif
-					}
-
-					// Shift left to get next element
-					cur_character = cur_character << 1;
-				}
-			}
-			else // End of message
-			{
-#ifdef DEBUG
-				Serial.println("End of message");
-#endif
-				// Reload the message buffer and set buffer pointer back to beginning
-				//strcpy(msg_buffer, tx_buffer);
-				//cur_msg_p = msg_buffer;
-				cur_character = '\0';
-
-				if (msg_delay == 0)
-				{
-					// If a constantly repeating message, put a word delay at the end of message
-					cur_state_end = cur_timer + (dit_length * MULT_WORDDELAY);
-					cur_state = State::EOMDELAY;
-				}
-				else
-				{
-					// Otherwise, set the message delay time
-					if (msg_delay_end < (cur_timer + (dit_length * MULT_WORDDELAY)))
-					{
-						cur_state_end = cur_timer + (dit_length * MULT_WORDDELAY);
-					}
-					else
-					{
-						cur_state_end = msg_delay_end;
-					}
-
-					cur_state = State::MSGDELAY;
-				}
-			}
-		}
+	case State::DIT:
+	case State::DAH:
+		startState(State::ELEMENTDELAY, UNITS_ELEMENT_DELAY);
 		break;
 
 	case State::PREAMBLE:
-		// Transmitter off
-		tx = false;
-		if (dfcw_mode)
-		{
-			// if(output_pin)
-			// {
-			// 	digitalWrite(output_pin, LOW);
-			// }
-			digitalWrite(output_pin, HIGH);
-			digitalWrite(led_pin, HIGH);
-		}
-		else
-		{
-			if (output_pin)
-			{
-				digitalWrite(output_pin, LOW);
-			}
-			digitalWrite(led_pin, LOW);
-		}
-
-		// When done waiting, go back to IDLE state to start the message
-		if (cur_timer > cur_state_end)
-		{
-			preamble_enable = false;
-			cur_state = State::IDLE;
-		}
+		preamble_enable = false;
+		nextElement();
 		break;
 
-	case State::DIT:
-	case State::DAH:
-		tx = true;
-		if (dfcw_mode)
-		{
-			// if(output_pin)
-			// {
-			// 	digitalWrite(output_pin, LOW);
-			// }
-			digitalWrite(output_pin, HIGH);
-			digitalWrite(led_pin, HIGH);
-		}
-		else
-		{
-			if (output_pin)
-			{
-				digitalWrite(output_pin, HIGH);
-			}
-			digitalWrite(led_pin, HIGH);
-		}
-
-		if (cur_timer > cur_state_end)
-		{
-			tx = false;
-			if (dfcw_mode)
-			{
-				// if(output_pin)
-				// {
-				// 	digitalWrite(output_pin, LOW);
-				// }
-				digitalWrite(led_pin, HIGH);
-			}
-			else
-			{
-				if (output_pin)
-				{
-					digitalWrite(output_pin, LOW);
-				}
-				digitalWrite(led_pin, LOW);
-			}
-
-			cur_state_end = cur_timer + dit_length;
-			cur_state = State::DITDELAY;
-		}
-		break;
-	case State::DITDELAY:
-	case State::DAHDELAY:
-	case State::WORDDELAY:
-	case State::MSGDELAY:
 	case State::EOMDELAY:
-		tx = false;
-		if (dfcw_mode)
-		{
-			// if(output_pin)
-			// {
-			// 	digitalWrite(output_pin, LOW);
-			// }
-			digitalWrite(led_pin, HIGH);
-		}
-		else
-		{
-			if (output_pin)
-			{
-				digitalWrite(output_pin, LOW);
-			}
-			digitalWrite(led_pin, LOW);
-		}
-
-		if (cur_timer > cur_state_end)
-		{
-			if (cur_state == State::WORDDELAY)
-			{
-				// Grab next character
-				cur_msg_p++;
-				cur_char++;
-
-				// If we read a NULL from the announce buffer, set cur_character to NULL,
-				// otherwise set to correct morse character
-				if ((*cur_msg_p) == '\0')
-				{
-					cur_character = '\0';
-				}
-				else
-				{
-// TODO
-#if defined(__arm__)
-					cur_character = morsechar[(*cur_msg_p) - MORSE_CHAR_START];
-#else
-					cur_character = pgm_read_byte(&morsechar[(*cur_msg_p) - MORSE_CHAR_START]);
-#endif
-				}
-			}
-			else if (cur_state == State::EOMDELAY)
-			{
-				// Clear the message buffer when message sending is complete
-				memset(msg_buffer, 0, TX_BUFFER_SIZE + 1);
-				busy = false;
-				cur_char = 0;
-				if (dfcw_mode)
-				{
-					digitalWrite(led_pin, LOW);
-				}
-				else
-				{
-					if (output_pin)
-					{
-						digitalWrite(output_pin, LOW);
-					}
-					digitalWrite(led_pin, LOW);
-				}
-			}
-
-			cur_state = State::IDLE;
-		}
+		finishMessage();
 		break;
 
 	default:
+		nextElement();
 		break;
 	}
 }
@@ -385,55 +167,72 @@ void Morse::update()
 /*
  * Morse::setWPM(float new_wpm)
  *
- * Set the Morse code sending speed.
+ * Set the Morse code sending speed. Values are limited to the range
+ * MIN_WPM..MAX_WPM.
  *
  * new_wpm - Sending speed in words per minute.
  *
  */
 void Morse::setWPM(float new_wpm)
 {
-	wpm = new_wpm;
+	if (!(new_wpm >= MIN_WPM)) // Also catches NaN
+	{
+		new_wpm = MIN_WPM;
+	}
+	else if (new_wpm > MAX_WPM)
+	{
+		new_wpm = MAX_WPM;
+	}
+
 	// This is converted to WPM * 1000 due to need for fractional WPM for slow modes
 	//
 	// Dit length in milliseconds is 1200 ms / WPM
-	dit_length = (1200000UL / (uint32_t)(new_wpm * 1000));
+	uint32_t new_dit_length = 1200000UL / static_cast<uint32_t>(new_wpm * 1000 + 0.5f);
+
+	InterruptGuard guard;
+	wpm = new_wpm;
+	dit_length = new_dit_length;
 }
 
 /*
  * Morse::send(const char * message)
  *
- * Send the specified message in Morse code on the output pin.
+ * Send the specified message in Morse code on the output pin. Any message in
+ * progress is abandoned. Messages longer than TX_BUFFER_SIZE characters are
+ * truncated.
  *
  * message - String literal or zero-delimited string to transmit.
  *
  */
 void Morse::send(const char *message)
 {
-	strcpy(msg_buffer, message);
+	InterruptGuard guard;
+
+	configurePins();
+
+	strncpy(msg_buffer, message, TX_BUFFER_SIZE);
+	msg_buffer[TX_BUFFER_SIZE] = '\0';
 	cur_msg_p = msg_buffer;
 	cur_char = 0;
-	cur_state = State::IDLE;
 	cur_character = 0;
+	msg_started = false;
+	cur_state = State::IDLE;
+	tx = false;
+	setOutputs(false);
 	busy = true;
 }
 
 /*
  * Morse::reset()
  *
- * Halts any sending in progress, empties the message buffer, and resets the
- * Morse state machine.
+ * Halts any sending in progress, empties the message buffer, turns the
+ * outputs off, and resets the Morse state machine.
  *
  */
 void Morse::reset()
 {
-	// strcpy((char *)msg_buffer, "");
-	memset(msg_buffer, 0, TX_BUFFER_SIZE + 1);
-	cur_msg_p = msg_buffer;
-	cur_char = 0;
-	cur_state = State::IDLE;
-	cur_character = 0;
-	busy = false;
-	digitalWrite(led_pin, LOW);
+	InterruptGuard guard;
+	finishMessage();
 }
 
 /*
@@ -441,22 +240,162 @@ void Morse::reset()
  */
 
 /*
- * uint32_t Morse::getMsgDelay(uint8_t delay_minutes)
+ * Morse::nextElement()
  *
- * Convert a number of minutes to clock ticks (in milliseconds)
- * in order to have the library delay for longer periods.
- *
- * delay_minutes - Number of minutes to convert to clock ticks.
+ * Start whatever comes next in the message: an element, a delay, or the end
+ * of the message.
  *
  */
-uint32_t Morse::getMsgDelay(uint8_t delay_minutes)
+void Morse::nextElement()
 {
-	// The single function parameter is the message delay time in minutes
-	if (delay_minutes > MAX_MSG_DELAY)
+	if (!tx_enable)
 	{
-		delay_minutes = MAX_MSG_DELAY;
+		// Pause here; update() resumes from IDLE when tx_enable is set again
+		cur_state = State::IDLE;
+		tx = false;
+		return;
 	}
 
-	// Number of clock ticks is the number of minutes * 60000 ticks/per min
-	return delay_minutes * 60000UL;
+	if (!msg_started)
+	{
+		msg_started = true;
+		loadCharacter();
+
+		if (preamble_enable && cur_character != 0)
+		{
+			startState(State::PREAMBLE, UNITS_PREAMBLE);
+			return;
+		}
+	}
+
+	if (cur_character == 0)
+	{
+		// End of message. This delay completes the word space after the last
+		// character so that back-to-back messages are spaced correctly.
+		startState(State::EOMDELAY, UNITS_WORD_DELAY);
+	}
+	else if (cur_character == MORSE_SPACE)
+	{
+		cur_msg_p++;
+		loadCharacter();
+		startState(State::WORDDELAY, UNITS_WORD_DELAY);
+	}
+	else if (cur_character == MORSE_EOC)
+	{
+		cur_msg_p++;
+		loadCharacter();
+		startState(State::CHARDELAY, UNITS_CHAR_DELAY);
+	}
+	else
+	{
+		bool dah = (cur_character & 0b10000000) != 0;
+		cur_character = static_cast<uint8_t>(cur_character << 1);
+
+		if (dah)
+		{
+			startState(State::DAH, UNITS_DAH);
+		}
+		else
+		{
+			startState(State::DIT, UNITS_DIT);
+		}
+	}
+}
+
+/*
+ * Morse::loadCharacter()
+ *
+ * Load the character at cur_msg_p into cur_character, skipping over any
+ * characters that cannot be sent.
+ *
+ */
+void Morse::loadCharacter()
+{
+	cur_character = lookupCharacter(*cur_msg_p);
+
+	while (cur_character == MORSE_EOC)
+	{
+		cur_msg_p++;
+		cur_character = lookupCharacter(*cur_msg_p);
+	}
+
+	cur_char = static_cast<uint8_t>(cur_msg_p - msg_buffer);
+}
+
+/*
+ * Morse::startState(State state, uint8_t units)
+ *
+ * Enter a timed state lasting the given number of dits and set the outputs
+ * for it immediately.
+ *
+ */
+void Morse::startState(State state, uint8_t units)
+{
+	bool key_down = (state == State::DIT || state == State::DAH);
+
+	cur_state = state;
+	cur_state_end = cur_timer + units * dit_length;
+	tx = key_down;
+
+	// In DFCW mode the carrier stays on for the whole message
+	setOutputs(key_down || dfcw_mode);
+}
+
+/*
+ * Morse::finishMessage()
+ *
+ * Clear the message buffer, turn the outputs off and return to IDLE.
+ *
+ */
+void Morse::finishMessage()
+{
+	memset(msg_buffer, 0, TX_BUFFER_SIZE + 1);
+	cur_msg_p = msg_buffer;
+	cur_char = 0;
+	cur_character = 0;
+	msg_started = false;
+	cur_state = State::IDLE;
+	tx = false;
+	setOutputs(false);
+	busy = false;
+}
+
+/*
+ * Morse::setOutputs(bool on)
+ *
+ * Drive the output and LED pins. A pin number of 0 means "not used".
+ *
+ */
+void Morse::setOutputs(bool on)
+{
+	if (output_pin)
+	{
+		digitalWrite(output_pin, on ? HIGH : LOW);
+	}
+
+	if (led_pin && led_pin != output_pin)
+	{
+		digitalWrite(led_pin, on ? HIGH : LOW);
+	}
+}
+
+/*
+ * Morse::configurePins()
+ *
+ * Set the output and LED pins to OUTPUT mode. Called from the constructor
+ * and again from send(), so that pins are configured after the core's own
+ * initialization and so that a led_pin changed after construction works.
+ *
+ */
+void Morse::configurePins()
+{
+	if (output_pin)
+	{
+		pinMode(output_pin, OUTPUT);
+	}
+
+	if (led_pin && led_pin != output_pin)
+	{
+		pinMode(led_pin, OUTPUT);
+	}
 }
