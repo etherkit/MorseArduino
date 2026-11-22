@@ -1,0 +1,30 @@
+{
+  "name": "Etherkit Morse",
+  "version": "1.2.0",
+  "description": "Generate Morse Code for transmission on a digital I/O pin. Call update() every millisecond and the library keys the pin (or a boolean flag) at the sending speed you set, including fractional WPM for QRSS and DFCW modes.",
+  "keywords": "morse, cw, ham radio, amateur radio, qrss, dfcw, beacon",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/etherkit/MorseArduino.git"
+  },
+  "authors": [
+    {
+      "name": "Jason Milldrum",
+      "email": "milldrum@gmail.com",
+      "url": "https://www.etherkit.com",
+      "maintainer": true
+    }
+  ],
+  "license": "GPL-3.0-or-later",
+  "homepage": "https://github.com/etherkit/MorseArduino",
+  "frameworks": "arduino",
+  "platforms": "*",
+  "headers": "Morse.h",
+  "export": {
+    "exclude": [
+      ".github",
+      ".gitignore",
+      "extras"
+    ]
+  }
+}
