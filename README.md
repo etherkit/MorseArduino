@@ -16,7 +16,7 @@ If you need to or would like to install the library in the old way, then you can
 
 Hardware Requirements and Setup
 -------------------------------
-This library has been written for the Arduino platform, to be processor agnostic. It has been successfully tested on the Arduino Uno, an Uno clone, and an Empyrean (Arduino Zero derivative). In order to be platform independent, it requires that the end user call on the class _update()_ member function one time per millisecond. The details of the implementation are left up to the user, but it is best done using a timer interrupt service routine.
+This library has been written for the Arduino platform, to be processor agnostic. It has been successfully tested on the Arduino Uno, an Uno clone, an Empyrean (Arduino Zero derivative), and an ATtiny3226 (megaTinyCore). In order to be platform independent, it requires that the end user call on the class _update()_ member function one time per millisecond. The details of the implementation are left up to the user, but it is best done using a timer interrupt service routine.
 
 Example
 -------
